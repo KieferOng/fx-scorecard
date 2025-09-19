@@ -378,5 +378,5 @@ styled_z = (
       ])
 )
 
-st.subheader("Unweighted driver z-scores")
+st.subheader("Raw driver z-scores")
 st.dataframe(styled_z, width='stretch')
