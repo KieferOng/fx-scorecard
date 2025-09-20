@@ -295,18 +295,18 @@ def weight_inputs_group(group_label: str, factors: list[str], last_auto: str, de
                 weights_out[k] = weights_out[k] / total
         return weights_out
 
-NONCMD_FACTORS = ["carry", "yield_curve", "momentum", "volatility", "equity_relative"]
+NONCMD_FACTORS = ["carry", "yield_curve", "momentum", "volatility", "equity_rel"]
 noncmd_weights = weight_inputs_group(
     "Non-commods currencies (EUR/GBP/JPY/CHF/SEK)",
-    ["carry", "yield_curve", "momentum", "volatility", "equity_relative"],
-    last_auto="equity_relative",
+    ["carry", "yield_curve", "momentum", "volatility", "equity_rel"],
+    last_auto="equity_rel",
     default_each=1.0/5.0
 )
 
-CMD_FACTORS = ["carry", "yield_curve", "momentum", "volatility", "equity_relative", "commods"]
+CMD_FACTORS = ["carry", "yield_curve", "momentum", "volatility", "equity_rel", "commods"]
 cmd_weights = weight_inputs_group(
     "Commods currencies (CAD/NOK/AUD/NZD)",
-    ["carry", "yield_curve", "momentum", "volatility", "equity_relative", "commods"],
+    ["carry", "yield_curve", "momentum", "volatility", "equity_rel", "commods"],
     last_auto="commods",
     default_each=1.0/6.0
 )
