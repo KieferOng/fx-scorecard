@@ -8,5 +8,4 @@ __pycache__/
 # Local data / notes / misc
 *.csv
 *.pptx
-*.ipynb
 Papers/
