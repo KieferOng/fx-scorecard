@@ -1,0 +1,12 @@
+# venv
+.venv/
+__pycache__/
+
+# Streamlit secrets
+.streamlit/
+
+# Local data / notes / misc
+*.csv
+*.pptx
+*.ipynb
+Papers/
