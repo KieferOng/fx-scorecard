@@ -302,11 +302,13 @@ def weight_inputs_group(group_label: str, factors: list[str], last_auto: str, de
     with st.sidebar.expander(group_label, expanded=True):
         editable = [f for f in factors if f != last_auto]
         vals = {}
+
         for f in editable:
+            key_f = f"{group_label}-{f}"
             raw_val = st.text_input(
                 f"{f} weight",
                 value=f"{default_each:.3f}",
-                key=f"{group_label}-{f}"
+                key=key_f,
             )
             try:
                 val = float(raw_val)
@@ -320,11 +322,14 @@ def weight_inputs_group(group_label: str, factors: list[str], last_auto: str, de
             st.warning("Sum of entered weights exceeds 1. Reducing the last weight to 0.")
             auto_val = 0.0
 
+        auto_key = f"{group_label}-{last_auto}"
+        st.session_state[auto_key] = f"{auto_val:.4f}"
+
         st.text_input(
             f"{last_auto} weight",
-            value=f"{auto_val:.4f}",
-            key=f"{group_label}-{last_auto}",
-            disabled=True
+            value=st.session_state[auto_key],
+            key=auto_key,
+            disabled=True,
         )
 
         weights_out = {**vals, last_auto: auto_val}
@@ -332,6 +337,7 @@ def weight_inputs_group(group_label: str, factors: list[str], last_auto: str, de
         if 0.9999 <= total <= 1.0001:
             for k in weights_out:
                 weights_out[k] = weights_out[k] / total
+
         return weights_out
 
 NONCMD_FACTORS = ["carry", "yield_curve", "momentum", "volatility", "equity_rel"]
