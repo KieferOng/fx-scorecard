@@ -125,7 +125,6 @@ def synchronise_panels(container: dict, ffill=True):
     end   = max(df.index.max() for df in panels.values())
     idx = pd.bdate_range(start, end, freq="B")
     
-    # Apply forward fill to cover API reporting lags 
     return {k: df.reindex(idx).ffill() for k, df in panels.items()}
 
 def combine(data_dict, sep="_"):
@@ -134,7 +133,7 @@ def combine(data_dict, sep="_"):
         df_copy = df.copy()
         df_copy.columns = [f"{key}{sep}{col}" for col in df_copy.columns]
         frames.append(df_copy)
-    return pd.concat(frames, axis=1).sort_index().ffill() # Final ffill catch-all
+    return pd.concat(frames, axis=1).sort_index().ffill()
 
 # =============================
 # Driver construction & scorecard
@@ -316,12 +315,14 @@ def weight_inputs_group(group_label: str, factors: list[str], last_auto: str, de
         if manual_sum > 1.0:
             st.warning("Sum of entered weights exceeds 1. Reducing the last weight to 0.")
 
-        # Fixed duplicate key warning by providing a unique display key
+        display_key = f"{group_label}-{last_auto}_display"
+        st.session_state[display_key] = float(auto_val)
+
         st.number_input(
             f"{last_auto} weight",
-            value=auto_val,
+            value=float(auto_val),
             disabled=True,
-            key=f"{group_label}-{last_auto}_display"
+            key=display_key
         )
 
         weights_out = {**vals, last_auto: auto_val}
