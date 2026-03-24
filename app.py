@@ -17,8 +17,8 @@ def _date_window(days=365):
     return start, end
 
 FX_TICKERS = {
-    "EUR": "EURUSD=X","GBP": "GBPUSD=X","JPY": "USDJPY=X","CHF": "USDCHF=X",
-    "CAD": "USDCAD=X","AUD": "AUDUSD=X","NZD": "NZDUSD=X","NOK": "USDNOK=X","SEK": "USDSEK=X",
+    "EUR": "EURUSD=X","GBP": "GBPUSD=X","JPY": "JPY=X","CHF": "CHF=X",
+    "CAD": "CAD=X","AUD": "AUDUSD=X","NZD": "NZDUSD=X","NOK": "NOK=X","SEK": "SEK=X",
 }
 VIX_TICKER = "^VIX"
 EQUITY_TICKERS = {
@@ -120,9 +120,12 @@ def synchronise_panels(container: dict, ffill=True):
             panels[k] = d
     if not panels:
         return container
+    
     start = max(df.index.min() for df in panels.values())
     end   = max(df.index.max() for df in panels.values())
     idx = pd.bdate_range(start, end, freq="B")
+    
+    # Apply forward fill to cover API reporting lags 
     return {k: df.reindex(idx).ffill() for k, df in panels.items()}
 
 def combine(data_dict, sep="_"):
@@ -131,7 +134,7 @@ def combine(data_dict, sep="_"):
         df_copy = df.copy()
         df_copy.columns = [f"{key}{sep}{col}" for col in df_copy.columns]
         frames.append(df_copy)
-    return pd.concat(frames, axis=1).sort_index()
+    return pd.concat(frames, axis=1).sort_index().ffill() # Final ffill catch-all
 
 # =============================
 # Driver construction & scorecard
@@ -155,13 +158,10 @@ def month_constant_from_start(s: pd.Series) -> pd.Series:
         sub = s2[mask].dropna()
 
         if not sub.empty:
-            # first non-zero/non-NA in this month
             last_val = float(sub.iloc[0])
 
-        # if sub empty, keep last_val (may still be NaN for early months)
         month_val[m] = last_val
 
-    # map back to daily index
     out = pd.Series(index=s2.index, dtype=float)
     for idx, m in zip(s2.index, months):
         out.at[idx] = month_val.get(m, np.nan)
@@ -304,37 +304,29 @@ def weight_inputs_group(group_label: str, factors: list[str], last_auto: str, de
         vals = {}
 
         for f in editable:
-            key_f = f"{group_label}-{f}"
-            raw_val = st.text_input(
+            vals[f] = st.number_input(
                 f"{f} weight",
-                value=f"{default_each:.3f}",
-                key=key_f,
+                min_value=0.0, max_value=1.0, value=default_each, step=0.05,
+                key=f"{group_label}-{f}"
             )
-            try:
-                val = float(raw_val)
-            except ValueError:
-                val = 0.0
-            vals[f] = min(max(val, 0.0), 1.0)
 
-        manual_sum = float(np.clip(sum(vals.values()), 0.0, 1.0))
-        auto_val = 1.0 - manual_sum
-        if auto_val < 0:
+        manual_sum = sum(vals.values())
+        auto_val = max(0.0, 1.0 - manual_sum)
+
+        if manual_sum > 1.0:
             st.warning("Sum of entered weights exceeds 1. Reducing the last weight to 0.")
-            auto_val = 0.0
 
-        auto_key = f"{group_label}-{last_auto}"
-        st.session_state[auto_key] = f"{auto_val:.4f}"
-
-        st.text_input(
+        # Fixed duplicate key warning by providing a unique display key
+        st.number_input(
             f"{last_auto} weight",
-            value=st.session_state[auto_key],
-            key=auto_key,
+            value=auto_val,
             disabled=True,
+            key=f"{group_label}-{last_auto}_display"
         )
 
         weights_out = {**vals, last_auto: auto_val}
         total = sum(weights_out.values())
-        if 0.9999 <= total <= 1.0001:
+        if 0.9999 <= total <= 1.0001 and total > 0:
             for k in weights_out:
                 weights_out[k] = weights_out[k] / total
 
@@ -343,7 +335,7 @@ def weight_inputs_group(group_label: str, factors: list[str], last_auto: str, de
 NONCMD_FACTORS = ["carry", "yield_curve", "momentum", "volatility", "equity_rel"]
 noncmd_weights = weight_inputs_group(
     "Non-commods currencies (EUR/GBP/JPY/CHF/SEK)",
-    ["carry", "yield_curve", "momentum", "volatility", "equity_rel"],
+    NONCMD_FACTORS,
     last_auto="equity_rel",
     default_each=1.0/5.0
 )
@@ -351,15 +343,15 @@ noncmd_weights = weight_inputs_group(
 CMD_FACTORS = ["carry", "yield_curve", "momentum", "volatility", "equity_rel", "commods"]
 cmd_weights = weight_inputs_group(
     "Commods currencies (CAD/NOK/AUD/NZD)",
-    ["carry", "yield_curve", "momentum", "volatility", "equity_rel", "commods"],
+    CMD_FACTORS,
     last_auto="commods",
-    default_each=1.0/5.0
+    default_each=1.0/6.0
 )
 
 fred_api_key = st.secrets.get("FRED_API_KEY", None) or os.getenv("FRED_API_KEY")
 if not fred_api_key: st.warning("⚠️ No FRED API key provided — yield data may be empty.")
 
-run_btn = st.button("▶ Run dashboard", width='stretch')
+run_btn = st.button("▶ Run dashboard", use_container_width=True)
 if not run_btn:
     st.info("Set your inputs on the left, then click **Run dashboard**.")
     st.stop()
@@ -370,11 +362,16 @@ try:
     fred_data = fred_yields_download(api_key=fred_api_key); prog.progress(60)
     flat_panel = combine(synchronise_panels(build_container(yf_data, fred_data))); prog.progress(80)
     drivers_df = build_drivers(flat_panel); prog.progress(90)
-except Exception: st.error("Data processing failed:"); st.code(traceback.format_exc()); st.stop()
+except Exception: 
+    st.error("Data processing failed:")
+    st.code(traceback.format_exc())
+    st.stop()
 
 snap = pd.to_datetime(snapshot_date)
 drivers_asof = drivers_df.loc[:snap]
-if drivers_asof.empty: st.error("No driver data available for or before this date."); st.stop()
+if drivers_asof.empty: 
+    st.error("No driver data available for or before this date.")
+    st.stop()
 effective_date = drivers_asof.index[-1]
 if effective_date.date() < snap.date():
     st.warning(f"⚠️ Snapshot date adjusted to last available: {effective_date.date()}")
@@ -411,7 +408,7 @@ styled_contrib = (
 )
 
 st.subheader("FX Scorecard")
-st.dataframe(styled_contrib, width='stretch')
+st.dataframe(styled_contrib, use_container_width=True)
 
 z_view = z_df.reset_index().rename(columns={"ccy":"currency"}).set_index("currency")
 styled_z = (
@@ -424,4 +421,4 @@ styled_z = (
 )
 
 st.subheader("Raw driver z-scores")
-st.dataframe(styled_z, width='stretch')
+st.dataframe(styled_z, use_container_width=True)
